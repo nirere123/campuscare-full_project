@@ -1,0 +1,34 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isStaff() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff';
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isStaff());
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.role == 'student';
+      // Role changes are made only by an authorized administrator in Firebase Console.
+      allow update, delete: if false;
+    }
+
+    match /incidents/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.status == 'Submitted';
+      allow update: if isStaff();
+      allow delete: if isStaff()
+        || (signedIn()
+          && resource.data.reporterId == request.auth.uid
+          && resource.data.status == 'Submitted');
+    }
+  }
+
